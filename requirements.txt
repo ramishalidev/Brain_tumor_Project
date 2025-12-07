@@ -1,0 +1,8 @@
+flask
+flask-cors
+tensorflow
+pillow
+numpy
+requests
+python-dotenv
+psycopg2-binary
