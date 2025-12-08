@@ -1,0 +1,35 @@
+# Updated requirements.txt with FREE LLM services
+
+# Core ML
+tensorflow>=2.13.0
+tf-keras==2.15.0  # Fix for Keras 3 compatibility issue
+
+numpy>=1.24.0
+Pillow>=10.0.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+
+# Flask API
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# FREE LLM Services
+groq>=0.4.0                          # Groq API (fast, free)
+sentence-transformers>=2.2.0         # Local embeddings (free)
+chromadb>=0.4.0                      # Local vector database (free)
+ollama>=0.1.0                        # Optional: Local LLM (free)
+
+# Alternative: HuggingFace (free)
+transformers>=4.30.0
+torch>=2.0.0
+
+# Database
+psycopg2-binary>=2.9.0
+
+# Testing
+requests>=2.31.0
+pytest>=7.4.0
+
+# Utilities
+python-dotenv>=1.0.0

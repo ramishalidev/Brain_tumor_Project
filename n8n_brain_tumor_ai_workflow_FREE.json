@@ -1,0 +1,381 @@
+{
+  "name": "Brain Tumor AI Analysis with FREE Groq LLM",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze-mri",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook - Receive MRI Image",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "brain-tumor-analysis"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || $input.item.json;\nconst imageData = body.image || body.image_data;\nconst patientId = body.patient_id || `patient_${Date.now()}`;\nconst imageUrl = body.image_url;\n\nif (!imageData && !imageUrl) {\n  throw new Error('No image data or URL provided');\n}\n\nreturn {\n  patient_id: patientId,\n  image_data: imageData,\n  image_url: imageUrl,\n  timestamp: new Date().toISOString(),\n  request_metadata: {\n    source: body.source || 'api',\n    priority: body.priority || 'normal'\n  }\n};"
+      },
+      "id": "extract-image",
+      "name": "Extract & Validate Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5000/predict",
+        "authentication": "none",
+        "requestMethod": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"image\": $json.image_data, \"patient_id\": $json.patient_id } }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "model-prediction",
+      "name": "Brain Tumor Model Prediction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\nconst prediction = response.prediction || {};\n\nlet severity = 'low';\nlet riskScore = 0;\n\nif (prediction.is_tumor) {\n  riskScore = prediction.confidence * 100;\n  \n  if (prediction.confidence > 0.9) {\n    severity = 'high';\n  } else if (prediction.confidence > 0.75) {\n    severity = 'medium';\n  } else if (prediction.confidence > 0.6) {\n    severity = 'moderate';\n  }\n  \n  if (prediction.class === 'glioma' && prediction.confidence > 0.85) {\n    severity = 'critical';\n    riskScore *= 1.2;\n  }\n}\n\nreturn {\n  patient_id: response.patient_id,\n  predicted_class: prediction.class,\n  confidence: prediction.confidence,\n  confidence_percentage: Math.round(prediction.confidence * 100),\n  probabilities: prediction.probabilities,\n  is_tumor: prediction.is_tumor,\n  severity: severity,\n  risk_score: Math.min(100, Math.round(riskScore)),\n  gradcam_data: response.gradcam,\n  timestamp: response.timestamp,\n  metadata: response.metadata\n};"
+      },
+      "id": "parse-prediction",
+      "name": "Parse & Enrich Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5000/generate-embedding",
+        "authentication": "none",
+        "requestMethod": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": `Patient ${$json.patient_id}: ${$json.predicted_class} tumor with ${$json.confidence_percentage}% confidence, severity ${$json.severity}` } }}",
+        "options": {}
+      },
+      "id": "generate-embedding",
+      "name": "Generate Embeddings (Local - FREE)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "options": {
+          "metadata": "={{ { \"patient_id\": $json.patient_id, \"diagnosis\": $json.predicted_class, \"confidence\": $json.confidence, \"severity\": $json.severity, \"timestamp\": $json.timestamp } }}"
+        }
+      },
+      "id": "store-vector",
+      "name": "Store in ChromaDB (FREE)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 200],
+      "disabled": false,
+      "notes": "Store embeddings in local ChromaDB. Modify to use your ChromaDB integration."
+    },
+    {
+      "parameters": {
+        "operation": "query",
+        "options": {
+          "nResults": 5
+        }
+      },
+      "id": "retrieve-similar",
+      "name": "Retrieve Similar Cases (ChromaDB)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 400],
+      "disabled": false,
+      "notes": "Query ChromaDB for similar cases. Modify to use your ChromaDB integration."
+    },
+    {
+      "parameters": {
+        "jsCode": "const prediction = $input.first().json;\nconst similarCases = $input.last().json.documents || [];\n\nconst context = `You are an expert radiologist AI assistant. Generate a clinical report for this brain MRI analysis.\n\nPatient ID: ${prediction.patient_id}\nDiagnosis: ${prediction.predicted_class.toUpperCase()}\nConfidence: ${prediction.confidence_percentage}%\nTumor Present: ${prediction.is_tumor ? 'Yes' : 'No'}\nSeverity: ${prediction.severity.toUpperCase()}\nRisk Score: ${prediction.risk_score}/100\n\nSimilar Historical Cases:\n${similarCases.slice(0, 3).map((c, i) => `${i+1}. ${c}`).join('\\n') || 'No similar cases found'}\n\nGenerate a professional clinical report including:\n1. Diagnosis summary\n2. Clinical findings\n3. Risk assessment\n4. Recommended next steps\n5. Urgency level\n\nKeep it concise, professional, and actionable.`;\n\nreturn {\n  ...prediction,\n  prompt_context: context,\n  similar_cases_count: similarCases.length\n};"
+      },
+      "id": "build-context",
+      "name": "Build RAG Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "requestMethod": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GROQ_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"llama-3.3-70b-versatile\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are an expert medical AI assistant specializing in brain tumor analysis.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": $json.prompt_context\n    }\n  ],\n  \"temperature\": 0.7,\n  \"max_tokens\": 1024\n} }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "groq-llm",
+      "name": "Groq LLM - Generate Report (FREE)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prediction = $input.first().json;\nconst llmResponse = $input.last().json;\n\nconst report = llmResponse.choices[0].message.content;\n\nreturn {\n  patient_id: prediction.patient_id,\n  analysis_id: `BTM-${Date.now()}`,\n  diagnosis: {\n    predicted_class: prediction.predicted_class,\n    confidence: prediction.confidence,\n    severity: prediction.severity,\n    risk_score: prediction.risk_score\n  },\n  clinical_analysis: {\n    llm_generated_report: report,\n    similar_cases_analyzed: prediction.similar_cases_count,\n    has_historical_precedent: prediction.similar_cases_count > 0\n  },\n  recommendations: {\n    urgent_action_required: prediction.severity === 'critical' || prediction.severity === 'high',\n    priority_level: prediction.severity === 'critical' ? 'IMMEDIATE' : \n                   prediction.severity === 'high' ? 'URGENT' : \n                   prediction.severity === 'medium' ? 'ROUTINE' : 'STANDARD'\n  },\n  metadata: {\n    model_version: '1.0',\n    rag_enabled: true,\n    llm_model: 'groq-llama-3.3-70b',\n    llm_provider: 'groq (free)',\n    embedding_model: 'sentence-transformers (local, free)',\n    vector_db: 'chromadb (local, free)',\n    timestamp: new Date().toISOString()\n  },\n  gradcam_data: prediction.gradcam_data\n};"
+      },
+      "id": "format-response",
+      "name": "Format Final Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "combineOperation": "any"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.recommendations.urgent_action_required }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "check-severity",
+      "name": "Check Severity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "sendEmail",
+        "email": "={{ $env.ALERT_EMAIL }}",
+        "subject": "=🚨 URGENT: Brain Tumor Analysis - {{ $json.diagnosis.predicted_class.toUpperCase() }} Detected",
+        "message": "=URGENT ACTION REQUIRED\n\nPatient: {{ $json.patient_id }}\nDiagnosis: {{ $json.diagnosis.predicted_class.toUpperCase() }}\nConfidence: {{ Math.round($json.diagnosis.confidence * 100) }}%\nSeverity: {{ $json.diagnosis.severity.toUpperCase() }}\nRisk Score: {{ $json.diagnosis.risk_score }}/100\n\nClinical Report:\n{{ $json.clinical_analysis.llm_generated_report }}\n\nPriority: {{ $json.recommendations.priority_level }}\nTimestamp: {{ $json.metadata.timestamp }}\n\nPlease review immediately.",
+        "options": {}
+      },
+      "id": "send-alert",
+      "name": "Send Email Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [2050, 200],
+      "disabled": false,
+      "notes": "Configure with SMTP credentials for email alerts"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO clinical_reports (patient_id, analysis_id, diagnosis, confidence, severity, risk_score, is_tumor, report_json, created_at) VALUES ('{{ $json.patient_id }}', '{{ $json.analysis_id }}', '{{ $json.diagnosis.predicted_class }}', {{ $json.diagnosis.confidence }}, '{{ $json.diagnosis.severity }}', {{ $json.diagnosis.risk_score }}, {{ $json.diagnosis.predicted_class !== 'notumor' }}, '{{ JSON.stringify($json) }}', NOW())",
+        "options": {}
+      },
+      "id": "save-db",
+      "name": "Save to PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2050, 400],
+      "credentials": {
+        "postgres": {
+          "id": "postgres-credentials",
+          "name": "PostgreSQL"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2250, 300]
+    }
+  ],
+  "connections": {
+    "Webhook - Receive MRI Image": {
+      "main": [
+        [
+          {
+            "node": "Extract & Validate Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract & Validate Image": {
+      "main": [
+        [
+          {
+            "node": "Brain Tumor Model Prediction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Brain Tumor Model Prediction": {
+      "main": [
+        [
+          {
+            "node": "Parse & Enrich Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Enrich Results": {
+      "main": [
+        [
+          {
+            "node": "Generate Embeddings (Local - FREE)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Retrieve Similar Cases (ChromaDB)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Embeddings (Local - FREE)": {
+      "main": [
+        [
+          {
+            "node": "Store in ChromaDB (FREE)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retrieve Similar Cases (ChromaDB)": {
+      "main": [
+        [
+          {
+            "node": "Build RAG Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build RAG Context": {
+      "main": [
+        [
+          {
+            "node": "Groq LLM - Generate Report (FREE)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq LLM - Generate Report (FREE)": {
+      "main": [
+        [
+          {
+            "node": "Format Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Final Response": {
+      "main": [
+        [
+          {
+            "node": "Check Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Severity": {
+      "main": [
+        [
+          {
+            "node": "Send Email Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save to PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Alert": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2024-12-08T00:00:00.000Z",
+  "versionId": "free-llm-version"
+}
