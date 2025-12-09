@@ -7,7 +7,8 @@
         "path": "analyze-mri",
         "responseMode": "responseNode",
         "options": {
-          "rawBody": false
+          "rawBody": false,
+          "allowedOrigins": "*"
         }
       },
       "id": "webhook-trigger",
@@ -29,12 +30,12 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:5000/predict",
+        "url": "http://127.0.0.1:5000/predict",
         "authentication": "none",
         "requestMethod": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ { \"image\": $json.image_data, \"patient_id\": $json.patient_id } }}",
+        "jsonBody": "={{ { \"image_base64\": $json.image_data, \"patient_id\": $json.patient_id } }}",
         "options": {
           "timeout": 30000
         }
@@ -57,7 +58,7 @@
     },
     {
       "parameters": {
-        "url": "http://localhost:5000/generate-embedding",
+        "url": "http://127.0.0.1:5000/generate-embedding",
         "authentication": "none",
         "requestMethod": "POST",
         "sendBody": true,
@@ -103,7 +104,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prediction = $input.first().json;\nconst similarCases = $input.last().json.documents || [];\n\nconst context = `You are an expert radiologist AI assistant. Generate a clinical report for this brain MRI analysis.\n\nPatient ID: ${prediction.patient_id}\nDiagnosis: ${prediction.predicted_class.toUpperCase()}\nConfidence: ${prediction.confidence_percentage}%\nTumor Present: ${prediction.is_tumor ? 'Yes' : 'No'}\nSeverity: ${prediction.severity.toUpperCase()}\nRisk Score: ${prediction.risk_score}/100\n\nSimilar Historical Cases:\n${similarCases.slice(0, 3).map((c, i) => `${i+1}. ${c}`).join('\\n') || 'No similar cases found'}\n\nGenerate a professional clinical report including:\n1. Diagnosis summary\n2. Clinical findings\n3. Risk assessment\n4. Recommended next steps\n5. Urgency level\n\nKeep it concise, professional, and actionable.`;\n\nreturn {\n  ...prediction,\n  prompt_context: context,\n  similar_cases_count: similarCases.length\n};"
+        "jsCode": "const prediction = $input.first().json;\nconst similarCases = $input.last().json.documents || [];\n\nconst tumorTypeInfo = {\n  'glioma': 'Glioma is a type of tumor that occurs in the brain and spinal cord. It originates from glial cells and can be aggressive. Early detection and treatment are crucial.',\n  'meningioma': 'Meningioma is typically a slow-growing tumor that forms in the membranes surrounding the brain and spinal cord. Most are benign but require monitoring.',\n  'pituitary': 'Pituitary tumors develop in the pituitary gland and can affect hormone production. Most are non-cancerous but may require treatment depending on size and symptoms.',\n  'notumor': 'No tumor detected. This indicates normal brain tissue with no evidence of abnormal masses or lesions.'\n};\n\nconst urgencyMapping = {\n  'critical': 'IMMEDIATE - Requires emergency consultation within 24 hours',\n  'high': 'URGENT - Schedule specialist consultation within 48-72 hours',\n  'medium': 'MODERATE - Schedule follow-up within 1-2 weeks',\n  'low': 'ROUTINE - Schedule regular monitoring as recommended',\n  'none': 'STANDARD - Annual check-ups recommended'\n};\n\nconst context = `You are an expert neuroradiologist AI assistant specializing in brain tumor analysis. Generate a comprehensive yet concise clinical report.\n\n=== PATIENT INFORMATION ===\nPatient ID: ${prediction.patient_id}\nAnalysis Date: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}\n\n=== DIAGNOSTIC FINDINGS ===\nDiagnosis: ${prediction.predicted_class.toUpperCase()}\nModel Confidence: ${prediction.confidence_percentage}%\nTumor Status: ${prediction.is_tumor ? 'Tumor Detected' : 'No Tumor Detected'}\nClinical Severity: ${prediction.severity.toUpperCase()}\nRisk Score: ${prediction.risk_score}/100\n\n=== PROBABILITY DISTRIBUTION ===\n${Object.entries(prediction.probabilities || {}).map(([type, prob]) => \n  `- ${type.charAt(0).toUpperCase() + type.slice(1)}: ${Math.round(prob * 100)}%`\n).join('\\n')}\n\n=== TUMOR TYPE CONTEXT ===\n${tumorTypeInfo[prediction.predicted_class] || 'See specialist for detailed evaluation.'}\n\n=== SIMILAR HISTORICAL CASES ===\n${similarCases.length > 0 ? similarCases.slice(0, 3).map((c, i) => `${i+1}. ${c}`).join('\\n') : 'No historical precedent available in database.'}\n\n=== REPORT REQUIREMENTS ===\nGenerate a structured clinical report with the following sections:\n\n**1. EXECUTIVE SUMMARY**\n- Provide a 2-3 sentence overview of key findings\n- State the primary diagnosis clearly\n- Mention confidence level and clinical significance\n\n**2. DETAILED CLINICAL FINDINGS**\n- Describe the diagnostic results in medical terminology\n- Explain what the AI model detected in the MRI scan\n- Reference the probability distribution if relevant\n- Note any distinguishing features\n\n**3. RISK STRATIFICATION & SEVERITY ASSESSMENT**\n- Explain the risk score (${prediction.risk_score}/100) in clinical context\n- Describe why the severity is classified as ${prediction.severity.toUpperCase()}\n- Discuss potential complications if applicable\n- Compare to similar historical cases if available\n\n**4. CLINICAL RECOMMENDATIONS**\n- Provide specific next steps based on findings\n- Recommend appropriate specialists (neurosurgeon, oncologist, endocrinologist, etc.)\n- Suggest additional diagnostic tests if needed (contrast MRI, biopsy, blood work, etc.)\n- Outline follow-up timeline\n\n**5. URGENCY CLASSIFICATION**\n- State urgency level: ${urgencyMapping[prediction.severity] || 'Consult with healthcare provider'}\n- Provide clear action timeline\n- List warning signs to monitor\n\n**6. PATIENT GUIDANCE**\n- Offer brief, reassuring guidance appropriate to the diagnosis\n- Mention lifestyle considerations if relevant\n- Emphasize importance of professional medical review\n\n=== FORMATTING GUIDELINES ===\n- Use clear section headers with ** ** for bold\n- Keep medical terminology accurate but accessible\n- Be specific with timelines and recommendations\n- Maintain professional, empathetic tone\n- Limit total report to 400-500 words\n- End with standard medical disclaimer\n\nGenerate the report now:`;\n\nreturn {\n  ...prediction,\n  prompt_context: context,\n  similar_cases_count: similarCases.length\n};"
       },
       "id": "build-context",
       "name": "Build RAG Context",
@@ -145,7 +146,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const prediction = $input.first().json;\nconst llmResponse = $input.last().json;\n\nconst report = llmResponse.choices[0].message.content;\n\nreturn {\n  patient_id: prediction.patient_id,\n  analysis_id: `BTM-${Date.now()}`,\n  diagnosis: {\n    predicted_class: prediction.predicted_class,\n    confidence: prediction.confidence,\n    severity: prediction.severity,\n    risk_score: prediction.risk_score\n  },\n  clinical_analysis: {\n    llm_generated_report: report,\n    similar_cases_analyzed: prediction.similar_cases_count,\n    has_historical_precedent: prediction.similar_cases_count > 0\n  },\n  recommendations: {\n    urgent_action_required: prediction.severity === 'critical' || prediction.severity === 'high',\n    priority_level: prediction.severity === 'critical' ? 'IMMEDIATE' : \n                   prediction.severity === 'high' ? 'URGENT' : \n                   prediction.severity === 'medium' ? 'ROUTINE' : 'STANDARD'\n  },\n  metadata: {\n    model_version: '1.0',\n    rag_enabled: true,\n    llm_model: 'groq-llama-3.3-70b',\n    llm_provider: 'groq (free)',\n    embedding_model: 'sentence-transformers (local, free)',\n    vector_db: 'chromadb (local, free)',\n    timestamp: new Date().toISOString()\n  },\n  gradcam_data: prediction.gradcam_data\n};"
+        "jsCode": "const prediction = $input.first().json;\nconst llmResponse = $input.last().json;\n\nconst report = llmResponse.choices[0].message.content;\nconst gradcam = prediction.gradcam_data || prediction.gradcam || null;\n\nreturn {\n  patient_id: prediction.patient_id,\n  analysis_id: `BTM-${Date.now()}`,\n  diagnosis: {\n    predicted_class: prediction.predicted_class,\n    class: prediction.predicted_class,\n    confidence: prediction.confidence,\n    confidence_percentage: prediction.confidence_percentage,\n    severity: prediction.severity,\n    risk_score: prediction.risk_score,\n    is_tumor: prediction.is_tumor,\n    probabilities: prediction.probabilities,\n    all_probabilities: prediction.probabilities\n  },\n  clinical_analysis: {\n    llm_generated_report: report,\n    similar_cases_analyzed: prediction.similar_cases_count || 0,\n    has_historical_precedent: (prediction.similar_cases_count || 0) > 0\n  },\n  recommendations: {\n    urgent_action_required: prediction.severity === 'critical' || prediction.severity === 'high',\n    priority_level: prediction.severity === 'critical' ? 'IMMEDIATE' : \n                   prediction.severity === 'high' ? 'URGENT' : \n                   prediction.severity === 'medium' ? 'ROUTINE' : 'STANDARD'\n  },\n  metadata: {\n    model_version: '1.0',\n    rag_enabled: true,\n    llm_model: 'groq-llama-3.3-70b',\n    llm_provider: 'groq (free)',\n    embedding_model: 'sentence-transformers (local, free)',\n    vector_db: 'chromadb (local, free)',\n    timestamp: new Date().toISOString()\n  },\n  severity: prediction.severity,\n  risk_score: prediction.risk_score,\n  gradcam_data: gradcam,\n  gradcam: gradcam\n};"
       },
       "id": "format-response",
       "name": "Format Final Response",

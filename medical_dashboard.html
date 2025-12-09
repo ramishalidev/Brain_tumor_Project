@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NeuroScan AI - Brain Tumor Analysis Platform</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --primary: #1a4d8f;
+        --secondary: #0a7ea4;
+        --accent: #e63946;
+        --success: #06a77d;
+        --warning: #f4a261;
+        --bg-primary: #f8f9fc;
+        --bg-secondary: #ffffff;
+        --text-primary: #1e293b;
+        --text-secondary: #64748b;
+        --border: #e2e8f0;
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont,
+          sans-serif;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Medical Header */
+      .medical-header {
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border);
+        padding: 0;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        box-shadow: var(--shadow-sm);
+      }
+
+      .header-top {
+        background: var(--primary);
+        color: white;
+        padding: 8px 0;
+      }
+
+      .header-top-content {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 0 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+      }
+
+      .header-main {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 16px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .logo-section {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .logo-box {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+      }
+
+      .logo-text h1 {
+        font-size: 20px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 2px;
+      }
+
+      .logo-text p {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-weight: 400;
+      }
+
+      /* Main Layout */
+      .main-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 32px 24px;
+      }
+
+      .layout-grid {
+        display: grid;
+        grid-template-columns: 380px 1fr;
+        gap: 24px;
+        margin-bottom: 32px;
+      }
+
+      @media (max-width: 1200px) {
+        .layout-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      /* Medical Card */
+      .medical-card {
+        background: var(--bg-secondary);
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        box-shadow: var(--shadow-md);
+        overflow: hidden;
+      }
+
+      .card-header {
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(to right, #f8f9fc, #ffffff);
+      }
+
+      .card-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-primary);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .card-subtitle {
+        font-size: 13px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+      }
+
+      .card-body {
+        padding: 24px;
+      }
+
+      /* Upload Zone */
+      .upload-zone {
+        border: 2px dashed var(--border);
+        border-radius: 12px;
+        padding: 48px 24px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: #fafbfc;
+      }
+
+      .upload-zone:hover {
+        border-color: var(--primary);
+        background: #f5f8fa;
+      }
+
+      .upload-zone.active {
+        border-color: var(--primary);
+        background: #f0f7ff;
+        border-style: solid;
+      }
+
+      .upload-icon-wrapper {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 16px;
+        background: linear-gradient(135deg, #e8f3ff, #d4e9ff);
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+      }
+
+      .upload-text h3 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+      }
+
+      .upload-text p {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      .upload-formats {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      /* Patient Info Form */
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+      }
+
+      .form-input {
+        width: 100%;
+        padding: 10px 14px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 14px;
+        font-family: inherit;
+        transition: all 0.2s ease;
+      }
+
+      .form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(26, 77, 143, 0.1);
+      }
+
+      /* Action Buttons */
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-family: inherit;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        background: var(--primary);
+        color: white;
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        background: #153d73;
+        box-shadow: var(--shadow-md);
+      }
+
+      .btn-secondary {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--border);
+      }
+
+      .btn-secondary:hover:not(:disabled) {
+        background: #f1f5f9;
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .btn-full {
+        width: 100%;
+      }
+
+      /* Preview Panel */
+      .preview-panel {
+        display: none;
+      }
+
+      .preview-panel.active {
+        display: block;
+      }
+
+      .image-preview {
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        margin-bottom: 16px;
+      }
+
+      /* Analysis Results */
+      .results-panel {
+        display: none;
+      }
+
+      .results-panel.active {
+        display: block;
+      }
+
+      .diagnosis-banner {
+        padding: 24px;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        border-left: 4px solid;
+      }
+
+      .diagnosis-banner.tumor {
+        background: #fef2f2;
+        border-color: var(--accent);
+      }
+
+      .diagnosis-banner.no-tumor {
+        background: #f0fdf4;
+        border-color: var(--success);
+      }
+
+      .diagnosis-label {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        margin-bottom: 8px;
+        opacity: 0.7;
+      }
+
+      .diagnosis-value {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .diagnosis-confidence {
+        font-size: 14px;
+        opacity: 0.8;
+      }
+
+      .confidence-bar {
+        height: 8px;
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 12px;
+      }
+
+      .confidence-fill {
+        height: 100%;
+        background: currentColor;
+        transition: width 1s ease;
+      }
+
+      /* Metrics Grid */
+      .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 16px;
+        margin-bottom: 24px;
+      }
+
+      .metric-card {
+        padding: 20px;
+        background: var(--bg-primary);
+        border-radius: 10px;
+        border: 1px solid var(--border);
+      }
+
+      .metric-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        margin-bottom: 8px;
+      }
+
+      .metric-value {
+        font-size: 28px;
+        font-weight: 600;
+        color: var(--text-primary);
+        font-family: "IBM Plex Mono", monospace;
+      }
+
+      .metric-unit {
+        font-size: 14px;
+        color: var(--text-secondary);
+        margin-left: 4px;
+      }
+
+      /* Heatmap Display */
+      .heatmap-container {
+        margin-bottom: 24px;
+      }
+
+      .heatmap-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .heatmap-item {
+        position: relative;
+      }
+
+      .heatmap-label {
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .heatmap-image {
+        width: 100%;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+      }
+
+      /* Probabilities Table */
+      .prob-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .prob-table th {
+        text-align: left;
+        padding: 12px;
+        background: var(--bg-primary);
+        border-bottom: 2px solid var(--border);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+      }
+
+      .prob-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+        font-size: 14px;
+      }
+
+      .prob-bar-cell {
+        width: 60%;
+      }
+
+      .prob-bar {
+        height: 8px;
+        background: var(--bg-primary);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .prob-bar-fill {
+        height: 100%;
+        background: linear-gradient(to right, var(--primary), var(--secondary));
+        transition: width 0.5s ease;
+      }
+
+      /* Progress Indicator */
+      .progress-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .progress-overlay.active {
+        display: flex;
+      }
+
+      .progress-box {
+        background: white;
+        padding: 40px;
+        border-radius: 16px;
+        text-align: center;
+        box-shadow: var(--shadow-lg);
+        max-width: 400px;
+      }
+
+      .progress-spinner {
+        width: 64px;
+        height: 64px;
+        border: 4px solid var(--bg-primary);
+        border-top-color: var(--primary);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 24px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .progress-text {
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 8px;
+      }
+
+      .progress-subtext {
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      /* Report Actions */
+      .report-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid var(--border);
+      }
+
+      /* Status Messages */
+      .status-message {
+        padding: 16px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: none;
+        align-items: center;
+        gap: 12px;
+        font-size: 14px;
+      }
+
+      .status-message.active {
+        display: flex;
+      }
+
+      .status-error {
+        background: #fef2f2;
+        color: #991b1b;
+        border: 1px solid #fecaca;
+      }
+
+      .status-success {
+        background: #f0fdf4;
+        color: #166534;
+        border: 1px solid #bbf7d0;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .metrics-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .heatmap-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .report-actions {
+          flex-direction: column;
+        }
+      }
+
+      /* Print/PDF Styling */
+      @media print {
+        body {
+          background: white;
+        }
+
+        .medical-header,
+        .report-actions,
+        .btn {
+          display: none !important;
+        }
+
+        .medical-card {
+          box-shadow: none;
+          page-break-inside: avoid;
+        }
+      }
+
+      #fileInput {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Medical Header -->
+    <header class="medical-header">
+      <div class="header-top">
+        <div class="header-top-content">
+          <span>🏥 Radiology AI Platform</span>
+          <span>Emergency: +1-XXX-XXX-XXXX</span>
+        </div>
+      </div>
+      <div class="header-main">
+        <div class="logo-section">
+          <div class="logo-box">🧠</div>
+          <div class="logo-text">
+            <h1>NeuroScan AI</h1>
+            <p>Brain Tumor Detection & Analysis</p>
+          </div>
+        </div>
+        <div>
+          <button class="btn btn-secondary" onclick="window.location.reload()">
+            🔄 New Analysis
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main-container">
+      <div class="layout-grid">
+        <!-- Left Sidebar - Upload & Patient Info -->
+        <aside>
+          <div class="medical-card">
+            <div class="card-header">
+              <div class="card-title">📤 Upload MRI Scan</div>
+              <div class="card-subtitle">Brain MRI Image Analysis</div>
+            </div>
+            <div class="card-body">
+              <div
+                class="upload-zone"
+                id="uploadZone"
+                onclick="document.getElementById('fileInput').click()"
+              >
+                <div class="upload-icon-wrapper">📁</div>
+                <div class="upload-text">
+                  <h3>Drop MRI scan here</h3>
+                  <p>or click to browse files</p>
+                </div>
+                <div class="upload-formats">
+                  Supported: JPG, PNG, DICOM • Max 10MB
+                </div>
+              </div>
+              <input
+                type="file"
+                id="fileInput"
+                accept="image/*"
+                onchange="handleFileSelect(event)"
+              />
+
+              <div id="previewPanel" class="preview-panel">
+                <img
+                  id="imagePreview"
+                  class="image-preview"
+                  alt="MRI Preview"
+                />
+                <button
+                  class="btn btn-secondary btn-full"
+                  onclick="clearImage()"
+                >
+                  ❌ Remove Image
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="medical-card" style="margin-top: 24px">
+            <div class="card-header">
+              <div class="card-title">👤 Patient Information</div>
+              <div class="card-subtitle">Optional metadata</div>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label class="form-label">Patient ID</label>
+                <input
+                  type="text"
+                  class="form-input"
+                  id="patientId"
+                  placeholder="P-12345"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Age</label>
+                <input
+                  type="number"
+                  class="form-input"
+                  id="patientAge"
+                  placeholder="45"
+                />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Scan Date</label>
+                <input type="date" class="form-input" id="scanDate" />
+              </div>
+              <button
+                class="btn btn-primary btn-full"
+                id="analyzeBtn"
+                onclick="analyzeImage()"
+                disabled
+              >
+                🔬 Analyze Scan
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Main Panel - Results -->
+        <section>
+          <div id="resultsPanel" class="results-panel">
+            <div class="medical-card">
+              <div class="card-header">
+                <div class="card-title">📊 Analysis Results</div>
+                <div class="card-subtitle" id="analysisTimestamp"></div>
+              </div>
+              <div class="card-body" id="reportContent">
+                <!-- Diagnosis Banner -->
+                <div id="diagnosisBanner" class="diagnosis-banner">
+                  <div class="diagnosis-label">DIAGNOSIS</div>
+                  <div class="diagnosis-value" id="diagnosisValue">—</div>
+                  <div class="diagnosis-confidence" id="diagnosisConfidence">
+                    —
+                  </div>
+                  <div class="confidence-bar">
+                    <div class="confidence-fill" id="confidenceFill"></div>
+                  </div>
+                </div>
+
+                <!-- Metrics Grid -->
+                <div class="metrics-grid">
+                  <div class="metric-card">
+                    <div class="metric-label">CONFIDENCE</div>
+                    <div class="metric-value" id="metricConfidence">
+                      —<span class="metric-unit">%</span>
+                    </div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-label">SEVERITY</div>
+                    <div class="metric-value" id="metricSeverity">—</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-label">URGENCY</div>
+                    <div class="metric-value" id="metricUrgency">—</div>
+                  </div>
+                  <div class="metric-card">
+                    <div class="metric-label">STATUS</div>
+                    <div class="metric-value" id="metricStatus">—</div>
+                  </div>
+                </div>
+
+                <!-- Heatmap Section -->
+                <div
+                  class="heatmap-container"
+                  id="heatmapContainer"
+                  style="display: none"
+                >
+                  <div
+                    class="card-header"
+                    style="padding: 0 0 16px 0; border: none"
+                  >
+                    <div class="card-title">
+                      🎯 Tumor Localization (Grad-CAM)
+                    </div>
+                  </div>
+                  <div class="heatmap-grid">
+                    <div class="heatmap-item">
+                      <div class="heatmap-label">Original Scan</div>
+                      <img
+                        id="originalImage"
+                        class="heatmap-image"
+                        alt="Original"
+                      />
+                    </div>
+                    <div class="heatmap-item">
+                      <div class="heatmap-label">AI Activation Map</div>
+                      <img
+                        id="heatmapImage"
+                        class="heatmap-image"
+                        alt="Heatmap"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Probabilities Table -->
+                <div style="margin-top: 24px">
+                  <div
+                    class="card-header"
+                    style="padding: 0 0 16px 0; border: none"
+                  >
+                    <div class="card-title">📈 Class Probabilities</div>
+                  </div>
+                  <table class="prob-table">
+                    <thead>
+                      <tr>
+                        <th>Tumor Type</th>
+                        <th>Probability</th>
+                        <th class="prob-bar-cell"></th>
+                      </tr>
+                    </thead>
+                    <tbody id="probabilities">
+                      <!-- Will be populated by JS -->
+                    </tbody>
+                  </table>
+                </div>
+
+                <!-- Report Actions -->
+                <div class="report-actions">
+                  <button class="btn btn-primary" onclick="downloadPDF()">
+                    📄 Download PDF Report
+                  </button>
+                  <button class="btn btn-secondary" onclick="printReport()">
+                    🖨️ Print Report
+                  </button>
+                  <button class="btn btn-secondary" onclick="shareReport()">
+                    📧 Share Report
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Initial State -->
+          <div id="initialState" class="medical-card">
+            <div
+              class="card-body"
+              style="text-align: center; padding: 80px 24px"
+            >
+              <div style="font-size: 64px; margin-bottom: 24px; opacity: 0.3">
+                🔬
+              </div>
+              <h2
+                style="
+                  font-size: 24px;
+                  font-weight: 600;
+                  margin-bottom: 12px;
+                  color: var(--text-primary);
+                "
+              >
+                Ready for Analysis
+              </h2>
+              <p
+                style="
+                  font-size: 14px;
+                  color: var(--text-secondary);
+                  max-width: 400px;
+                  margin: 0 auto;
+                "
+              >
+                Upload an MRI scan from the left panel to begin AI-powered brain
+                tumor detection and classification.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Progress Overlay -->
+    <div class="progress-overlay" id="progressOverlay">
+      <div class="progress-box">
+        <div class="progress-spinner"></div>
+        <div class="progress-text">Analyzing MRI Scan...</div>
+        <div class="progress-subtext">
+          Processing with EfficientNetB0 + Grad-CAM
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div id="statusMessage" class="status-message"></div>
+
+    <script>
+      let currentImageData = null;
+      let currentResults = null;
+
+      // Drag & Drop
+      const uploadZone = document.getElementById("uploadZone");
+
+      uploadZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        uploadZone.classList.add("active");
+      });
+
+      uploadZone.addEventListener("dragleave", () => {
+        uploadZone.classList.remove("active");
+      });
+
+      uploadZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove("active");
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+          handleFile(files[0]);
+        }
+      });
+
+      function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+          handleFile(file);
+        }
+      }
+
+      function handleFile(file) {
+        if (!file.type.startsWith("image/")) {
+          showStatus("Please upload an image file", "error");
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          currentImageData = e.target.result;
+          document.getElementById("imagePreview").src = currentImageData;
+          document.getElementById("previewPanel").classList.add("active");
+          document.getElementById("analyzeBtn").disabled = false;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function clearImage() {
+        currentImageData = null;
+        document.getElementById("previewPanel").classList.remove("active");
+        document.getElementById("fileInput").value = "";
+        document.getElementById("analyzeBtn").disabled = true;
+      }
+
+      async function analyzeImage() {
+        if (!currentImageData) return;
+
+        document.getElementById("progressOverlay").classList.add("active");
+        document.getElementById("initialState").style.display = "none";
+        const progressText = document.querySelector(".progress-text");
+        const progressSubtext = document.querySelector(".progress-subtext");
+
+        try {
+          const patientId =
+            document.getElementById("patientId").value || `WEB_${Date.now()}`;
+          const base64Image = currentImageData.split(",")[1];
+
+          // Step 1: Get prediction from Flask
+          progressText.textContent = "Step 1/2: AI Model Analysis...";
+          progressSubtext.textContent = "Running EfficientNetB0 + Grad-CAM";
+
+          const flaskResponse = await fetch("http://localhost:5000/predict", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              image_base64: base64Image,
+              patient_id: patientId,
+            }),
+          });
+
+          if (!flaskResponse.ok) throw new Error("Model prediction failed");
+
+          const predictionResult = await flaskResponse.json();
+
+          // Step 2: Get LLM clinical report from n8n
+          progressText.textContent = "Step 2/2: Generating Clinical Report...";
+          progressSubtext.textContent =
+            "AI analyzing with medical knowledge base";
+
+          let llmResult = null;
+          try {
+            const n8nResponse = await fetch(
+              "http://localhost:5678/webhook/analyze-mri",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  image_data: base64Image,
+                  image_base64: base64Image,
+                  patient_id: patientId,
+                  source: "web",
+                  priority: "normal",
+                  prediction: predictionResult.prediction,
+                  severity: predictionResult.severity,
+                  urgency: predictionResult.urgency,
+                  gradcam: predictionResult.gradcam,
+                }),
+              }
+            );
+
+            if (n8nResponse.ok) {
+              llmResult = await n8nResponse.json();
+            }
+          } catch (n8nError) {
+            console.warn(
+              "LLM report generation failed, using prediction only:",
+              n8nError
+            );
+          }
+
+          // Combine results
+          const combinedData = {
+            ...predictionResult,
+            clinical_report:
+              llmResult?.clinical_analysis?.llm_generated_report || null,
+            recommendations: llmResult?.recommendations || null,
+            similar_cases:
+              llmResult?.clinical_analysis?.similar_cases_analyzed || 0,
+          };
+
+          currentResults = combinedData;
+          displayResults(combinedData);
+        } catch (error) {
+          showStatus("Analysis failed: " + error.message, "error");
+          console.error(error);
+        } finally {
+          document.getElementById("progressOverlay").classList.remove("active");
+        }
+      }
+
+      function displayResults(data) {
+        const pred = data.prediction;
+        const isTumor = pred.is_tumor;
+
+        // Timestamp
+        document.getElementById("analysisTimestamp").textContent =
+          "Generated: " + new Date(data.timestamp).toLocaleString();
+
+        // Diagnosis Banner
+        const banner = document.getElementById("diagnosisBanner");
+        banner.className =
+          "diagnosis-banner " + (isTumor ? "tumor" : "no-tumor");
+
+        document.getElementById("diagnosisValue").textContent =
+          pred.predicted_class.toUpperCase();
+
+        document.getElementById(
+          "diagnosisConfidence"
+        ).textContent = `Confidence: ${pred.confidence_percentage}%`;
+
+        const fill = document.getElementById("confidenceFill");
+        fill.style.width = pred.confidence_percentage + "%";
+        fill.style.backgroundColor = isTumor
+          ? "var(--accent)"
+          : "var(--success)";
+
+        // Metrics
+        document.getElementById(
+          "metricConfidence"
+        ).innerHTML = `${pred.confidence_percentage.toFixed(
+          1
+        )}<span class="metric-unit">%</span>`;
+        document.getElementById("metricSeverity").textContent = (
+          data.severity || "N/A"
+        ).toUpperCase();
+        document.getElementById("metricUrgency").textContent = (
+          data.urgency || "N/A"
+        ).toUpperCase();
+        document.getElementById("metricStatus").textContent = isTumor
+          ? "TUMOR"
+          : "CLEAR";
+
+        // Heatmap
+        if (data.gradcam) {
+          document.getElementById("heatmapContainer").style.display = "block";
+          document.getElementById("originalImage").src = currentImageData;
+          document.getElementById("heatmapImage").src =
+            "data:image/png;base64," + data.gradcam;
+        }
+
+        // Probabilities
+        const tbody = document.getElementById("probabilities");
+        tbody.innerHTML = "";
+
+        const probs = pred.all_probabilities || pred.probabilities;
+        const sortedProbs = Object.entries(probs).sort((a, b) => b[1] - a[1]);
+
+        sortedProbs.forEach(([cls, prob]) => {
+          const row = tbody.insertRow();
+          row.innerHTML = `
+                    <td style="font-weight: ${
+                      cls === pred.predicted_class ? "600" : "400"
+                    }">
+                        ${cls.charAt(0).toUpperCase() + cls.slice(1)}
+                        ${cls === pred.predicted_class ? " ✓" : ""}
+                    </td>
+                    <td style="font-family: 'IBM Plex Mono', monospace; font-weight: 500;">
+                        ${(prob * 100).toFixed(2)}%
+                    </td>
+                    <td class="prob-bar-cell">
+                        <div class="prob-bar">
+                            <div class="prob-bar-fill" style="width: ${
+                              prob * 100
+                            }%"></div>
+                        </div>
+                    </td>
+                `;
+        });
+
+        // Add LLM Clinical Report if available
+        if (data.clinical_report) {
+          const reportSection = document.createElement("div");
+          reportSection.style.cssText =
+            "margin-top: 32px; padding: 24px; background: linear-gradient(135deg, #f0f7ff 0%, #e8f3ff 100%); border-radius: 12px; border-left: 4px solid var(--primary);";
+
+          reportSection.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                        <div style="width: 40px; height: 40px; background: linear-gradient(135deg, var(--primary), var(--secondary)); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px;">🤖</div>
+                        <div>
+                            <h3 style="font-size: 18px; font-weight: 600; color: var(--primary); margin-bottom: 4px;">AI-Generated Clinical Analysis</h3>
+                            <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Generated using medical knowledge base</p>
+                        </div>
+                    </div>
+                    <div id="clinicalReportText" style="background: white; padding: 20px; border-radius: 8px; line-height: 1.8; color: var(--text-primary); border: 1px solid var(--border); white-space: pre-wrap; font-size: 14px;">
+                        ${formatClinicalReport(data.clinical_report)}
+                    </div>
+                    <div style="margin-top: 16px; padding: 16px; background: #fff3cd; border-radius: 8px; border-left: 3px solid var(--warning);">
+                        <small style="color: #856404; line-height: 1.6; font-size: 12px;">
+                            ⚕️ <strong>Medical Disclaimer:</strong> This AI-generated report is for informational purposes only. 
+                            It should be reviewed and validated by a qualified healthcare professional before making any clinical decisions.
+                        </small>
+                    </div>
+                `;
+
+          document
+            .getElementById("probabilities")
+            .parentElement.parentElement.appendChild(reportSection);
+        }
+
+        // Show results
+        document.getElementById("resultsPanel").classList.add("active");
+      }
+
+      function formatClinicalReport(report) {
+        return report
+          .replace(
+            /\*\*(.*?)\*\*/g,
+            '<strong style="color: var(--primary);">$1</strong>'
+          )
+          .replace(
+            /^### (.*$)/gm,
+            '<h4 style="color: var(--primary); margin: 16px 0 8px 0; font-size: 15px;">$1</h4>'
+          )
+          .replace(
+            /^## (.*$)/gm,
+            '<h3 style="color: var(--primary); margin: 20px 0 10px 0; font-size: 16px;">$1</h3>'
+          )
+          .replace(
+            /^# (.*$)/gm,
+            '<h2 style="color: var(--primary); margin: 24px 0 12px 0; font-size: 18px;">$1</h2>'
+          )
+          .replace(
+            /^- (.*$)/gm,
+            '<li style="margin-left: 20px; margin-bottom: 4px;">$1</li>'
+          )
+          .replace(/\n\n/g, '</p><p style="margin: 12px 0;">')
+          .trim();
+      }
+
+      function showStatus(message, type) {
+        const el = document.getElementById("statusMessage");
+        el.textContent = message;
+        el.className = `status-message status-${type} active`;
+        setTimeout(() => el.classList.remove("active"), 5000);
+      }
+
+      async function downloadPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF("p", "mm", "a4");
+
+        // Header
+        doc.setFillColor(26, 77, 143);
+        doc.rect(0, 0, 210, 40, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(24);
+        doc.text("NeuroScan AI", 20, 20);
+        doc.setFontSize(12);
+        doc.text("Brain Tumor Analysis Report", 20, 30);
+
+        // Reset color
+        doc.setTextColor(0, 0, 0);
+
+        // Patient Info
+        doc.setFontSize(10);
+        doc.text(`Report Date: ${new Date().toLocaleDateString()}`, 20, 50);
+        doc.text(
+          `Patient ID: ${document.getElementById("patientId").value || "N/A"}`,
+          20,
+          56
+        );
+
+        // Diagnosis
+        doc.setFontSize(14);
+        doc.setFont(undefined, "bold");
+        doc.text("DIAGNOSIS", 20, 70);
+        doc.setFont(undefined, "normal");
+        doc.setFontSize(11);
+        const pred = currentResults.prediction;
+        doc.text(
+          `Classification: ${pred.predicted_class.toUpperCase()}`,
+          20,
+          78
+        );
+        doc.text(
+          `Confidence: ${pred.confidence_percentage.toFixed(2)}%`,
+          20,
+          84
+        );
+        doc.text(`Severity: ${currentResults.severity || "N/A"}`, 20, 90);
+        doc.text(`Urgency: ${currentResults.urgency || "N/A"}`, 20, 96);
+
+        // Probabilities
+        doc.setFontSize(14);
+        doc.setFont(undefined, "bold");
+        doc.text("CLASS PROBABILITIES", 20, 110);
+        doc.setFont(undefined, "normal");
+        doc.setFontSize(10);
+
+        let y = 118;
+        const probs = pred.all_probabilities || pred.probabilities;
+        Object.entries(probs)
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([cls, prob]) => {
+            doc.text(`${cls}: ${(prob * 100).toFixed(2)}%`, 20, y);
+            y += 6;
+          });
+
+        // Images
+        if (currentImageData) {
+          doc.addPage();
+          doc.setFontSize(14);
+          doc.setFont(undefined, "bold");
+          doc.text("MRI SCAN", 20, 20);
+          doc.addImage(currentImageData, "JPEG", 20, 30, 80, 80);
+
+          if (currentResults.gradcam) {
+            doc.text("GRAD-CAM HEATMAP", 110, 20);
+            doc.addImage(
+              "data:image/png;base64," + currentResults.gradcam,
+              "PNG",
+              110,
+              30,
+              80,
+              80
+            );
+          }
+        }
+
+        // Add Clinical Report if available
+        if (currentResults.clinical_report) {
+          doc.addPage();
+
+          // Clean report text - remove markdown formatting
+          let cleanReport = currentResults.clinical_report
+            .replace(/\*\*(.*?)\*\*/g, "$1") // Remove bold markers
+            .replace(/\*(.*?)\*/g, "$1") // Remove italic markers
+            .replace(/^#{1,6}\s+/gm, "") // Remove headers
+            .replace(/^[-*+]\s+/gm, "• ") // Convert bullets to •
+            .replace(/\n{3,}/g, "\n\n") // Normalize line breaks
+            .trim();
+
+          // Section header
+          doc.setFillColor(26, 77, 143);
+          doc.rect(0, 0, 210, 15, "F");
+          doc.setTextColor(255, 255, 255);
+          doc.setFontSize(18);
+          doc.setFont(undefined, "bold");
+          doc.text("AI-GENERATED CLINICAL ANALYSIS", 105, 10, {
+            align: "center",
+          });
+
+          doc.setTextColor(0, 0, 0);
+          doc.setFont(undefined, "normal");
+          doc.setFontSize(10);
+
+          // Parse sections for better formatting
+          const sections = cleanReport.split("\n\n");
+          let yPos = 25;
+          const lineHeight = 5;
+          const pageHeight = 270;
+          const leftMargin = 15;
+          const rightMargin = 195;
+
+          sections.forEach((section, index) => {
+            // Check if section is a title (short, capitalized)
+            const isTitle =
+              section.length < 60 && section === section.toUpperCase();
+
+            if (isTitle) {
+              // Add spacing before title (except first)
+              if (index > 0) yPos += 4;
+
+              // Check page break
+              if (yPos > pageHeight) {
+                doc.addPage();
+                yPos = 20;
+              }
+
+              // Draw title with underline
+              doc.setFont(undefined, "bold");
+              doc.setFontSize(12);
+              doc.text(section, leftMargin, yPos);
+              doc.setLineWidth(0.8);
+              doc.line(leftMargin, yPos + 1, leftMargin + 70, yPos + 1);
+              yPos += 8;
+
+              doc.setFont(undefined, "normal");
+              doc.setFontSize(10);
+            } else {
+              // Regular paragraph
+              const lines = doc.splitTextToSize(
+                section,
+                rightMargin - leftMargin
+              );
+
+              lines.forEach((line) => {
+                if (yPos > pageHeight) {
+                  doc.addPage();
+                  yPos = 20;
+                }
+
+                // Indent bullet points
+                const isBullet = line.trim().startsWith("•");
+                const xPos = isBullet ? leftMargin + 5 : leftMargin;
+
+                doc.text(line, xPos, yPos);
+                yPos += lineHeight;
+              });
+
+              yPos += 2; // Space between paragraphs
+            }
+          });
+
+          // Add disclaimer box
+          if (yPos > 240) {
+            doc.addPage();
+            yPos = 20;
+          }
+
+          yPos += 5;
+          doc.setFillColor(255, 243, 205);
+          doc.roundedRect(
+            leftMargin,
+            yPos,
+            rightMargin - leftMargin,
+            25,
+            2,
+            2,
+            "F"
+          );
+          doc.setDrawColor(243, 156, 18);
+          doc.setLineWidth(0.5);
+          doc.roundedRect(
+            leftMargin,
+            yPos,
+            rightMargin - leftMargin,
+            25,
+            2,
+            2,
+            "S"
+          );
+
+          doc.setFontSize(8);
+          doc.setFont(undefined, "bold");
+          doc.setTextColor(133, 100, 4);
+          doc.text("⚕ MEDICAL DISCLAIMER", leftMargin + 3, yPos + 5);
+
+          doc.setFont(undefined, "normal");
+          doc.setFontSize(7);
+          const disclaimerText = doc.splitTextToSize(
+            "This AI-generated report is for informational purposes only and should not be used as a substitute for professional medical advice. All findings must be reviewed and validated by a qualified healthcare professional before making any clinical decisions. The AI model predictions are based on statistical patterns and may not account for all clinical factors.",
+            rightMargin - leftMargin - 6
+          );
+
+          let disclaimerY = yPos + 10;
+          disclaimerText.forEach((line) => {
+            doc.text(line, leftMargin + 3, disclaimerY);
+            disclaimerY += 3;
+          });
+        }
+
+        // Footer
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(8);
+          doc.setTextColor(128);
+          doc.text(`Page ${i} of ${pageCount}`, 105, 290, { align: "center" });
+          doc.text("NeuroScan AI - Confidential Medical Report", 105, 285, {
+            align: "center",
+          });
+        }
+
+        doc.save(`NeuroScan_Report_${Date.now()}.pdf`);
+      }
+
+      function printReport() {
+        window.print();
+      }
+
+      function shareReport() {
+        alert(
+          "Email sharing feature - integrate with your backend email service"
+        );
+      }
+
+      // Set today's date
+      document.getElementById("scanDate").valueAsDate = new Date();
+    </script>
+  </body>
+</html>

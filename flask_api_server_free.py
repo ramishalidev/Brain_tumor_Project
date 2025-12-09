@@ -22,6 +22,13 @@ import base64
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Import OpenCV for better colormap and image processing
+try:
+    import cv2
+    HAS_OPENCV = True
+except ImportError:
+    HAS_OPENCV = False
+
 # Load embeddings
 from sentence_transformers import SentenceTransformer
 
@@ -30,11 +37,40 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
+# Print OpenCV status
+print("\n" + "="*70)
+print("🎨 Grad-CAM Visualization Setup")
+print("="*70)
+if HAS_OPENCV:
+    print("✅ OpenCV (cv2) detected - Using high-quality colormaps")
+    print("   - COLORMAP_JET for medical imaging standard")
+    print("   - Gaussian blur smoothing for cleaner heatmaps")
+    print("   - Contrast enhancement for better visibility")
+else:
+    print("⚠️  OpenCV not found - Using basic colormap")
+    print("   Install for better quality: pip install opencv-python")
+print("="*70 + "\n")
+
 # Configuration - Get absolute paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_DIR = os.path.join(BASE_DIR, "results", "models")
 CLASS_NAMES = ['glioma', 'meningioma', 'notumor', 'pituitary']
 IMG_SIZE = (224, 224)
+
+# Toggle to use strictly paper-style Grad-CAM (Selvaraju et al., 2017) without extra smoothing/thresholds.
+GRADCAM_STRICT = os.getenv('GRADCAM_STRICT', '0') == '1'
+
+# Class-specific Grad-CAM tuning values (see GRADCAM_IMPLEMENTATION.md)
+CLASS_HEATMAP_CONFIG = {
+    # Use JET-like for classic "hotspot" look - tightened to focus on actual tumor
+    'glioma':     {'threshold': 0.15, 'power': 0.65, 'alpha': 0.50, 'colormap': 'jet',     'kernel': 5, 'topk_ratio': 0.08},
+    # Use HOT for strong core
+    'meningioma': {'threshold': 0.12, 'power': 0.85, 'alpha': 0.60, 'colormap': 'hot',     'kernel': 5, 'topk_ratio': 0.10},
+    # Use TURBO (smooth jet-like) for small regions
+    'pituitary':  {'threshold': 0.10, 'power': 0.60, 'alpha': 0.60, 'colormap': 'turbo',   'kernel': 3, 'topk_ratio': 0.06},
+    # Use VIRIDIS muted for no-tumor (very small allowed area)
+    'notumor':    {'threshold': 0.30, 'power': 1.00, 'alpha': 0.35, 'colormap': 'viridis', 'kernel': 5, 'topk_ratio': 0.03},
+}
 
 # Try multiple model paths with absolute paths
 MODEL_PATHS = [
@@ -116,6 +152,15 @@ except Exception as e:
     print(f"❌ Error loading embedding model: {e}")
     embedding_model = None
 
+# Initialize Groq for free LLM reports
+GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
+print("\nChecking Groq API for LLM reports...")
+if GROQ_API_KEY:
+    print("✓ Groq API key found (free, fast LLM)")
+else:
+    print("⚠ Groq API key not set - LLM reports will be limited")
+    print("  Get free key at: https://console.groq.com/")
+
 
 def decode_image(image_data):
     """Decode base64 image or file upload"""
@@ -143,6 +188,156 @@ def preprocess_image(img):
     img_array = np.expand_dims(img_array, axis=0)
     img_array = preprocess_input(img_array)
     return img_array
+
+
+def generate_gradcam(img_array, pred_idx):
+    """Generate Grad-CAM (Selvaraju et al., 2017) on EfficientNetB0.
+
+    If GRADCAM_STRICT=1, apply the classic formulation: weights via GAP over
+    gradients, ReLU on heatmap, min-max normalize, resize + colormap, blend.
+    """
+    try:
+        pred_label = CLASS_NAMES[pred_idx]
+        cfg = CLASS_HEATMAP_CONFIG.get(pred_label, CLASS_HEATMAP_CONFIG['notumor'])
+
+        # Prefer Grad-CAM friendly layer from notebook: gradcam_target_conv → top_activation → last conv
+        target_layer = None
+        for candidate in ['gradcam_target_conv', 'top_activation']:
+            try:
+                target_layer = model.get_layer(candidate)
+                if target_layer is not None:
+                    print(f"🔭 Found target layer: {candidate}")
+                    break
+            except Exception:
+                continue
+
+        if target_layer is None:
+            # Fallback: last conv-like layer
+            for layer in reversed(model.layers):
+                if isinstance(layer, (tf.keras.layers.Conv2D, tf.keras.layers.DepthwiseConv2D, tf.keras.layers.SeparableConv2D)):
+                    target_layer = layer
+                    print(f"🔭 Fallback target layer: {layer.name}")
+                    break
+
+        if target_layer is None:
+            print('❌ No convolutional layer found for Grad-CAM')
+            return None
+
+        print(f"✅ Grad-CAM using layer: {target_layer.name}")
+        print(f"📊 Class config: threshold={cfg['threshold']}, power={cfg['power']}, alpha={cfg['alpha']}")
+
+        grad_model = tf.keras.Model(inputs=model.input, outputs=[target_layer.output, model.output])
+
+        with tf.GradientTape() as tape:
+            conv_outputs, predictions = grad_model(img_array)
+            if isinstance(predictions, list):
+                predictions = predictions[0]
+            class_score = predictions[:, pred_idx]
+
+        grads = tape.gradient(class_score, conv_outputs)
+        if grads is None:
+            print('❌ Gradients are None - layer may be frozen')
+            return None
+
+        pooled_grads = tf.reduce_mean(grads, axis=(0, 1, 2))
+        conv_outputs = conv_outputs[0]
+        heatmap = tf.reduce_sum(conv_outputs * pooled_grads, axis=-1)
+        heatmap = tf.maximum(heatmap, 0).numpy()  # ReLU per Grad-CAM paper
+
+        if GRADCAM_STRICT:
+            # Classic Grad-CAM: min-max normalize only
+            heatmap = heatmap / (heatmap.max() + 1e-8)
+            active_ratio = (heatmap > 0).mean() * 100
+            threshold_eff = None
+            print("🧭 GRADCAM_STRICT enabled: no thresholds/power/morphology")
+        else:
+            # Enhanced: percentile scaling + power + adaptive threshold + top-k clamp
+            scale_val = np.percentile(heatmap, 98.0)
+            if scale_val < 1e-6:
+                scale_val = heatmap.max() + 1e-8
+            heatmap = heatmap / (scale_val + 1e-8)
+            heatmap = np.power(heatmap, cfg['power'])
+            heatmap = np.clip(heatmap, 0, 1)
+
+            active_ratio_raw = (heatmap > 0).mean() * 100
+            threshold_eff = cfg['threshold']
+
+            # Top-k clamp to bound area per class
+            topk = cfg.get('topk_ratio', 0.1)
+            q = np.quantile(heatmap, 1 - topk)
+            adaptive_thresh = max(threshold_eff, q)
+
+            heatmap = np.where(heatmap >= adaptive_thresh, heatmap, 0)
+            active_ratio = (heatmap > 0).mean() * 100
+            if active_ratio < 0.5:
+                threshold_eff = max(0.03, threshold_eff * 0.6)
+                heatmap = np.where(heatmap >= threshold_eff, heatmap, 0)
+                active_ratio = (heatmap > 0).mean() * 100
+                print(f"⚠ Low activation, lowering threshold to {threshold_eff:.3f}")
+
+            print(f"✓ Active raw: {active_ratio_raw:.2f}% | post-threshold: {active_ratio:.2f}% | topk target: {topk*100:.1f}%")
+
+        # Morphological noise removal for tumor cases (skip in strict mode)
+        if (not GRADCAM_STRICT) and pred_label != 'notumor' and HAS_OPENCV and active_ratio > 0.3:
+            k = cfg['kernel']
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+            heatmap_uint8 = np.uint8(heatmap * 255)
+            opened = cv2.morphologyEx(heatmap_uint8, cv2.MORPH_OPEN, kernel)
+            closed = cv2.morphologyEx(opened, cv2.MORPH_CLOSE, kernel)
+            if (closed > 0).mean() * 100 < 0.1:
+                print("⚠ Morphology would remove signal; skipping")
+            else:
+                heatmap = closed.astype(np.float32) / 255.0
+
+        # Resize and smooth
+        heatmap_uint8 = np.uint8(255 * heatmap)
+        if HAS_OPENCV:
+            heatmap_resized = cv2.resize(heatmap_uint8, IMG_SIZE, interpolation=cv2.INTER_CUBIC)
+            heatmap_resized = cv2.GaussianBlur(heatmap_resized, (9, 9), 0)
+
+            colormap_map = {
+                'inferno': cv2.COLORMAP_INFERNO,
+                'hot': cv2.COLORMAP_HOT,
+                'plasma': cv2.COLORMAP_PLASMA,
+                'viridis': cv2.COLORMAP_VIRIDIS,
+                'turbo': cv2.COLORMAP_TURBO,
+                'jet': cv2.COLORMAP_JET,
+            }
+            colormap = colormap_map.get(cfg['colormap'], cv2.COLORMAP_JET)
+            heatmap_color = cv2.applyColorMap(heatmap_resized, colormap)
+            heatmap_color = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
+        else:
+            # Simple fallback colormap
+            heatmap_resized = np.array(Image.fromarray(heatmap_uint8).resize(IMG_SIZE, resample=Image.BICUBIC))
+            heatmap_color = np.stack([heatmap_resized]*3, axis=-1)
+
+        # Recover original image in RGB 0-255
+        original_img = img_array[0].copy()
+        if original_img.max() <= 1.0:
+            original_img = (original_img * 127.5 + 127.5).astype(np.uint8)
+        else:
+            original_img = ((original_img - original_img.min()) / (original_img.max() - original_img.min() + 1e-8) * 255).astype(np.uint8)
+        original_rgb = np.array(Image.fromarray(original_img).resize(IMG_SIZE).convert('RGB'))
+
+        if HAS_OPENCV:
+            blended = cv2.addWeighted(original_rgb, 1 - cfg['alpha'], heatmap_color, cfg['alpha'], 0)
+            blended = cv2.convertScaleAbs(blended, alpha=1.05, beta=10)
+            blended_img = Image.fromarray(blended)
+        else:
+            blended_img = Image.blend(Image.fromarray(original_rgb), Image.fromarray(heatmap_color), alpha=cfg['alpha'])
+
+        buffer = BytesIO()
+        blended_img.save(buffer, format='PNG')
+        heatmap_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        print(f"✅ Grad-CAM generated successfully (layer={target_layer.name}, label={pred_label})")
+        return heatmap_base64
+
+    except Exception as e:
+        print(f"❌ Grad-CAM generation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 @app.route('/health', methods=['GET'])
@@ -175,8 +370,13 @@ def predict():
         # Get image from request
         if 'image' in request.files:
             img = decode_image(request.files['image'])
-        elif request.is_json and 'image_base64' in request.json:
-            img = decode_image(request.json['image_base64'])
+        elif request.is_json:
+            # Accept both 'image_base64' and 'image' keys for flexibility
+            image_data = request.json.get('image_base64') or request.json.get('image')
+            if image_data:
+                img = decode_image(image_data)
+            else:
+                return jsonify({'error': 'No image provided. Send as form-data or JSON with image_base64 or image key'}), 400
         else:
             return jsonify({'error': 'No image provided. Send as form-data or JSON with image_base64'}), 400
         
@@ -188,33 +388,55 @@ def predict():
         pred_label = CLASS_NAMES[pred_idx]
         confidence = float(predictions[pred_idx])
         
-        # Build response
+        # Determine severity
+        is_tumor = pred_label.lower() != 'notumor'
+        severity = 'none'
+        urgency = 'none'
+        
+        if is_tumor:
+            if confidence > 0.95:
+                severity = 'high'
+                urgency = 'immediate'
+            elif confidence > 0.85:
+                severity = 'medium'
+                urgency = 'urgent'
+            else:
+                severity = 'low'
+                urgency = 'routine'
+        
+        # Generate Grad-CAM heatmap
+        gradcam_base64 = generate_gradcam(img_array, pred_idx)
+        
+        if gradcam_base64:
+            print(f"✓ Grad-CAM generated successfully ({len(gradcam_base64)} bytes)")
+        else:
+            print("⚠️ Grad-CAM not available for this prediction")
+        
+        # Build response (compatible with both frontend and WhatsApp)
         response = {
-            'prediction': pred_label,
-            'confidence': confidence,
-            'all_probabilities': {
-                CLASS_NAMES[i]: float(predictions[i]) 
-                for i in range(len(CLASS_NAMES))
+            'prediction': {
+                'class': pred_label,
+                'predicted_class': pred_label,
+                'confidence': confidence,
+                'confidence_percentage': round(confidence * 100, 2),
+                'probabilities': {
+                    CLASS_NAMES[i]: float(predictions[i]) 
+                    for i in range(len(CLASS_NAMES))
+                },
+                'all_probabilities': {
+                    CLASS_NAMES[i]: float(predictions[i]) 
+                    for i in range(len(CLASS_NAMES))
+                },
+                'is_tumor': is_tumor
             },
-            'is_tumor': pred_label.lower() != 'notumor',
+            'severity': severity,
+            'urgency': urgency,
+            'gradcam': gradcam_base64,
+            'gradcam_data': gradcam_base64,
+            'patient_id': request.json.get('patient_id', f'web_{datetime.now().timestamp()}') if request.is_json else None,
             'timestamp': datetime.now().isoformat(),
             'model_version': '1.0'
         }
-        
-        # Add severity assessment
-        if response['is_tumor']:
-            if confidence > 0.95:
-                response['severity'] = 'high'
-                response['urgency'] = 'immediate'
-            elif confidence > 0.85:
-                response['severity'] = 'medium'
-                response['urgency'] = 'urgent'
-            else:
-                response['severity'] = 'low'
-                response['urgency'] = 'routine'
-        else:
-            response['severity'] = 'none'
-            response['urgency'] = 'none'
         
         return jsonify(response)
     
